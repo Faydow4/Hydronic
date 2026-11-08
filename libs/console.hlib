@@ -1,0 +1,325 @@
+HYDinit
+GetStdHandle PROTO :DWORD
+WriteConsoleA PROTO :DWORD, :DWORD, :DWORD, :DWORD, :DWORD
+ReadConsoleA PROTO :DWORD, :DWORD, :DWORD, :DWORD, :DWORD
+SetSeparator PROTO :DWORD
+SetConsoleCP PROTO :DWORD
+SetConsoleOutputCP PROTO :DWORD
+ExitProcess PROTO :DWORD
+
+HYDdata
+numberBuffer BYTE 128 DUP(0)
+bytesWritten DWORD 0
+outputSeparator DWORD 10
+encode_error BYTE "Hydronic runtime error: encode expects a value in range [0..7]", 13, 10
+
+.code
+PrintNumber PROC value:DWORD, mode:DWORD, bits:DWORD
+    LOCAL digitCount:DWORD
+    LOCAL digitTotal:DWORD
+    LOCAL base:DWORD
+    LOCAL isNegative:DWORD
+    LOCAL hOutput:DWORD
+
+    push ebx
+    push esi
+    push edi
+
+    mov isNegative, 0
+    mov eax, value
+    mov ecx, bits
+
+    cmp ecx, 1
+    jb PN_USE32
+    cmp ecx, 32
+    ja PN_USE32
+    cmp ecx, 32
+    je PN_MASK_DONE
+
+    mov edx, 1
+    shl edx, cl
+    dec edx
+    and eax, edx
+    jmp PN_MASK_DONE
+
+PN_USE32:
+    mov ecx, 32
+
+PN_MASK_DONE:
+    cmp mode, 0
+    jne PN_CHECK_SIGN
+
+    mov BYTE PTR numberBuffer[0], al
+    mov digitCount, 1
+    jmp PN_PRINT
+
+PN_CHECK_SIGN:
+    cmp mode, 20
+    jne PN_SELECT_BASE
+
+    cmp ecx, 32
+    je PN_SIGN32
+
+    dec ecx
+    bt eax, ecx
+    jnc PN_SELECT_BASE
+
+    inc ecx
+    mov edx, 1
+    shl edx, cl
+    sub eax, edx
+
+    mov isNegative, 1
+    neg eax
+    jmp PN_SELECT_BASE
+
+PN_SIGN32:
+    test eax, 80000000h
+    jz PN_SELECT_BASE
+    mov isNegative, 1
+    neg eax
+
+PN_SELECT_BASE:
+    mov ebx, mode
+    cmp ebx, 2
+    je PN_BASE_OK
+    cmp ebx, 8
+    je PN_BASE_OK
+    cmp ebx, 16
+    je PN_BASE_OK
+    mov ebx, 10
+
+PN_BASE_OK:
+    mov base, ebx
+    mov digitCount, 0
+
+    test eax, eax
+    jnz PN_CONVERT
+    push 0
+    inc digitCount
+    jmp PN_BUILD
+
+PN_CONVERT:
+    xor edx, edx
+    mov ecx, base
+    div ecx
+    push edx
+    inc digitCount
+    test eax, eax
+    jnz PN_CONVERT
+
+PN_BUILD:
+    mov eax, digitCount
+    mov digitTotal, eax
+    lea edi, numberBuffer
+
+    cmp isNegative, 0
+    je PN_WRITE_DIGITS
+    mov BYTE PTR [edi], '-'
+    inc edi
+    inc digitTotal
+
+PN_WRITE_DIGITS:
+    mov ecx, digitCount
+
+PN_WRITE_LOOP:
+    pop eax
+    cmp eax, 9
+    jbe PN_DECIMAL_DIGIT
+    add al, 'A' - 10
+    jmp PN_STORE_DIGIT
+
+PN_DECIMAL_DIGIT:
+    add al, '0'
+
+PN_STORE_DIGIT:
+    mov BYTE PTR [edi], al
+    inc edi
+    loop PN_WRITE_LOOP
+
+    mov eax, digitTotal
+    mov digitCount, eax
+
+PN_PRINT:
+    invoke GetStdHandle, -11
+    mov hOutput, eax
+    invoke WriteConsoleA, hOutput, ADDR numberBuffer, digitCount, ADDR bytesWritten, 0
+
+    mov eax, outputSeparator
+    test eax, eax
+    jz PN_NO_SEPARATOR
+
+    mov BYTE PTR numberBuffer[0], al
+    invoke WriteConsoleA, hOutput, ADDR numberBuffer, 1, ADDR bytesWritten, 0
+
+PN_NO_SEPARATOR:
+
+    pop edi
+    pop esi
+    pop ebx
+    ret
+PrintNumber ENDP
+
+
+SetSeparator PROC value:DWORD
+    mov eax, value
+    and eax, 0FFh
+    mov outputSeparator, eax
+    ret
+SetSeparator ENDP
+
+ReadNumber PROC format:DWORD
+    LOCAL buffer[128]:BYTE
+    LOCAL charsRead:DWORD
+    LOCAL hInput:DWORD
+    LOCAL negative:DWORD
+
+    push ebx
+    push esi
+    push edi
+
+    invoke GetStdHandle, -10
+    mov hInput, eax
+    invoke ReadConsoleA, hInput, ADDR buffer, 127, ADDR charsRead, 0
+
+    xor edi, edi
+    mov negative, 0
+
+    cmp format, 0
+    jne RN_NUMERIC
+    movzx edi, BYTE PTR buffer
+    jmp RN_DONE
+
+RN_NUMERIC:
+    mov ebx, format
+    cmp ebx, 20
+    jne RN_BASE_OK
+    mov ebx, 10
+
+RN_BASE_OK:
+    lea esi, buffer
+    mov ecx, charsRead
+
+RN_SKIP:
+    test ecx, ecx
+    jz RN_DONE
+    movzx eax, BYTE PTR [esi]
+    cmp al, ' '
+    je RN_SKIP_CHAR
+    cmp al, 9
+    je RN_SKIP_CHAR
+    cmp al, 13
+    je RN_DONE
+    cmp al, 10
+    je RN_DONE
+    jmp RN_SIGN
+
+RN_SKIP_CHAR:
+    inc esi
+    dec ecx
+    jmp RN_SKIP
+
+RN_SIGN:
+    cmp format, 20
+    jne RN_PARSE
+    cmp BYTE PTR [esi], '-'
+    jne RN_PLUS
+    mov negative, 1
+    inc esi
+    dec ecx
+    jmp RN_PARSE
+
+RN_PLUS:
+    cmp BYTE PTR [esi], '+'
+    jne RN_PARSE
+    inc esi
+    dec ecx
+
+RN_PARSE:
+    test ecx, ecx
+    jz RN_DONE
+    movzx edx, BYTE PTR [esi]
+
+    cmp dl, '0'
+    jb RN_DONE
+    cmp dl, '9'
+    jbe RN_DIGIT
+
+    cmp dl, 'A'
+    jb RN_LOWER
+    cmp dl, 'F'
+    jbe RN_UPPER
+
+RN_LOWER:
+    cmp dl, 'a'
+    jb RN_DONE
+    cmp dl, 'f'
+    ja RN_DONE
+    sub edx, 'a' - 10
+    jmp RN_CHECK_DIGIT
+
+RN_UPPER:
+    sub edx, 'A' - 10
+    jmp RN_CHECK_DIGIT
+
+RN_DIGIT:
+    sub edx, '0'
+
+RN_CHECK_DIGIT:
+    cmp edx, ebx
+    jae RN_DONE
+    imul edi, ebx
+    add edi, edx
+    inc esi
+    dec ecx
+    jmp RN_PARSE
+
+RN_DONE:
+    cmp negative, 0
+    je RN_RETURN
+    neg edi
+
+RN_RETURN:
+    mov eax, edi
+    pop edi
+    pop esi
+    pop ebx
+    ret
+ReadNumber ENDP
+
+HYDfunc output value out mode m
+    {out_load}
+    invoke PrintNumber, eax, {m_code}, {out_bits}
+
+HYDfunc input var out mode m
+    invoke ReadNumber, {m_code}
+    and eax, {out_mask}
+    mov {out_storage} PTR [{out}], {out_register}
+
+HYDfunc sep value sep
+    {sep_load}
+    invoke SetSeparator, eax
+
+HYDfunc encode value codepage
+    {codepage_load}
+
+    cmp eax, 7
+    ja _hyd_encode_invalid
+
+    add eax, 1250
+    push eax
+    invoke SetConsoleOutputCP, DWORD PTR [esp]
+    test eax, eax
+    jz _hyd_encode_failed
+    invoke SetConsoleCP, DWORD PTR [esp]
+    add esp, 4
+    jmp _hyd_encode_done
+
+_hyd_encode_invalid:
+    invoke ExitProcess, 1
+
+_hyd_encode_failed:
+    add esp, 4
+    invoke ExitProcess, 2
+
+_hyd_encode_done:

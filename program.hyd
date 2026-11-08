@@ -1,0 +1,12 @@
+/lib
+    lib console csl;
+/data
+    list word 8 12;
+/code
+    \main
+        <csl> sep 0;
+        str_set word "Hello World!";
+        for j 0 11 0:
+            <csl> output word:j c;
+        end;
+/end

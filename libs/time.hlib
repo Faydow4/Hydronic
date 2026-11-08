@@ -1,0 +1,132 @@
+HYDinit
+GetLocalTime PROTO :DWORD
+Sleep PROTO :DWORD
+GetTickCount PROTO
+
+HYDdata
+
+HYDclass timer *num milsec *num started *bool running
+
+HYDfunc date var year var month var day
+    sub esp, 16
+    invoke GetLocalTime, esp
+
+    mov ax, WORD PTR [esp]
+    mov {year_storage} PTR [{year}], ax
+
+    mov ax, WORD PTR [esp+2]
+    mov {month_storage} PTR [{month}], al
+
+    mov ax, WORD PTR [esp+6]
+    mov {day_storage} PTR [{day}], ax
+
+    add esp, 16
+
+HYDfunc time var hour var mins var secs
+    sub esp, 16
+    invoke GetLocalTime, esp
+
+    mov ax, WORD PTR [esp+8]
+    mov {hour_storage} PTR [{hour}], al
+
+    mov ax, WORD PTR [esp+10]
+    mov {mins_storage} PTR [{mins}], al
+
+    mov ax, WORD PTR [esp+12]
+    mov {secs_storage} PTR [{secs}], al
+
+    add esp, 16
+
+HYDfunc time+ var hour var mins var secs var milsecs
+    sub esp, 16
+    invoke GetLocalTime, esp
+
+    mov ax, WORD PTR [esp+8]
+    mov {hour_storage} PTR [{hour}], al
+
+    mov ax, WORD PTR [esp+10]
+    mov {mins_storage} PTR [{mins}], al
+
+    mov ax, WORD PTR [esp+12]
+    mov {secs_storage} PTR [{secs}], al
+
+    mov ax, WORD PTR [esp+14]
+    mov {milsecs_storage} PTR [{milsecs}], ax
+
+    add esp, 16
+
+HYDfunc wait value secs
+    {secs_load}
+    imul eax, eax, 1000
+    invoke Sleep, eax
+
+HYDfunc wait+ value milsecs
+    {milsecs_load}
+    invoke Sleep, eax
+
+HYDfunc start timer t
+    invoke GetTickCount
+    mov {t>started_storage} PTR [{t>started}], eax
+
+    mov {t>milsec_storage} PTR [{t>milsec}], 0
+    mov {t>running_storage} PTR [{t>running}], 1
+
+HYDfunc take timer t var out
+    invoke GetTickCount
+
+    mov ecx, {t>started_storage} PTR [{t>started}]
+    sub eax, ecx
+
+    mov ecx, {t>running_storage} PTR [{t>running}]
+    imul eax, ecx
+
+    add eax, {t>milsec_storage} PTR [{t>milsec}]
+
+    xor edx, edx
+    mov ecx, 1000
+    div ecx
+
+    and eax, {out_mask}
+    mov {out_storage} PTR [{out}], {out_register}
+
+HYDfunc take+ timer t var out
+    invoke GetTickCount
+
+    mov ecx, {t>started_storage} PTR [{t>started}]
+    sub eax, ecx
+
+    mov ecx, {t>running_storage} PTR [{t>running}]
+    imul eax, ecx
+
+    add eax, {t>milsec_storage} PTR [{t>milsec}]
+
+    and eax, {out_mask}
+    mov {out_storage} PTR [{out}], {out_register}
+
+HYDfunc pause timer t
+    invoke GetTickCount
+
+    mov ecx, {t>started_storage} PTR [{t>started}]
+    mov edx, eax
+    sub eax, ecx
+
+    mov ecx, {t>running_storage} PTR [{t>running}]
+    imul eax, ecx
+
+    mov ecx, {t>milsec_storage} PTR [{t>milsec}]
+    add eax, ecx
+
+    mov {t>milsec_storage} PTR [{t>milsec}], eax
+    mov {t>started_storage} PTR [{t>started}], edx
+    mov {t>running_storage} PTR [{t>running}], 0
+
+HYDfunc resume timer t
+    invoke GetTickCount
+
+    mov {t>started_storage} PTR [{t>started}], eax
+    mov {t>running_storage} PTR [{t>running}], 1
+
+HYDfunc stop timer t
+    mov {t>milsec_storage} PTR [{t>milsec}], 0
+    mov {t>started_storage} PTR [{t>started}], 0
+    mov {t>running_storage} PTR [{t>running}], 0

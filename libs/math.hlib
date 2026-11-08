@@ -1,0 +1,107 @@
+HYDfunc pow var a value b
+    push ebx
+    push ecx
+    push edx
+    {b_load}
+    mov ecx, eax
+    {a_load}
+    mov ebx, eax
+    mov eax, 1
+    test ecx, ecx
+    jz pow_done
+pow_loop:
+    imul eax, ebx
+    dec ecx
+    jnz pow_loop
+pow_done:
+    and eax, {a_mask}
+    mov {a_storage} PTR [{a}], {a_register}
+    pop edx
+    pop ecx
+    pop ebx
+
+HYDfunc root var a value b
+    push ebx
+    push ecx
+    push edx
+    push esi
+    push edi
+    {a_load}
+    mov esi, eax
+    {b_load}
+    mov ebx, eax
+    test ebx, ebx
+    jz root_done
+    xor edi, edi
+root_candidate:
+    inc edi
+    mov eax, 1
+    mov ecx, ebx
+root_power:
+    mul edi
+    test edx, edx
+    jnz root_next
+    cmp eax, esi
+    ja root_next
+    dec ecx
+    jnz root_power
+    jmp root_candidate
+root_next:
+    dec edi
+    mov eax, edi
+    and eax, {a_mask}
+    mov {a_storage} PTR [{a}], {a_register}
+root_done:
+    pop edi
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+
+HYDfunc abs var a
+    {a_load}
+    mov ecx, {a_bits}
+    dec ecx
+    bt eax, ecx
+    jnc abs_done
+    neg eax
+abs_done:
+    and eax, {a_mask}
+    mov {a_storage} PTR [{a}], {a_register}
+
+HYDfunc neg var a
+    {a_load}
+    neg eax
+    and eax, {a_mask}
+    mov {a_storage} PTR [{a}], {a_register}
+
+
+HYDfunc max value a value b var out
+    push ecx
+    {a_load}
+    push eax
+    {b_load}
+    mov ecx, eax
+    pop eax
+    cmp eax, ecx
+    jge max_done
+    mov eax, ecx
+max_done:
+    and eax, {out_mask}
+    mov {out_storage} PTR [{out}], {out_register}
+    pop ecx
+
+HYDfunc min value a value b var out
+    push ecx
+    {a_load}
+    push eax
+    {b_load}
+    mov ecx, eax
+    pop eax
+    cmp eax, ecx
+    jle min_done
+    mov eax, ecx
+min_done:
+    and eax, {out_mask}
+    mov {out_storage} PTR [{out}], {out_register}
+    pop ecx

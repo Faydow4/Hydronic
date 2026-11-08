@@ -1,0 +1,58 @@
+HYDinit
+EXTERN GetTickCount@0:PROC
+
+HYDdata
+random_state DWORD 0
+
+HYDfunc generate value start value end var out
+    push ebx
+    push ecx
+    push edx
+    push esi
+
+    cmp random_state, 0
+    jne random_initialized
+
+    call GetTickCount@0
+    mov random_state, eax
+
+    cmp random_state, 0
+    jne random_initialized
+    mov random_state, 1
+
+random_initialized:
+
+    {start_load}
+    mov esi, eax
+
+    {end_load}
+    mov ebx, eax
+
+    mov eax, random_state
+    imul eax, eax, 1664525
+    add eax, 1013904223
+    mov random_state, eax
+
+    mov ecx, ebx
+    sub ecx, esi
+    inc ecx
+
+    jz random_full_range
+
+    xor edx, edx
+    div ecx
+    mov eax, edx
+    add eax, esi
+    jmp random_store
+
+random_full_range:
+    mov eax, random_state
+
+random_store:
+    and eax, {out_mask}
+    mov {out_storage} PTR [{out}], {out_register}
+
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
